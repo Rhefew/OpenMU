@@ -1,4 +1,4 @@
-﻿// <copyright file="ServerController.cs" company="MUnique">
+// <copyright file="ServerController.cs" company="MUnique">
 // Licensed under the MIT License. See LICENSE file in the project root for full license information.
 // </copyright>
 
@@ -66,6 +66,68 @@ namespace MUnique.OpenMU.Web.API
             }
 
             return isOnline;
+        }
+
+        /// <summary>
+        /// Kicks the specified account.
+        /// </summary>
+        /// <param name="accountName">Name of the account.</param>
+        [HttpPost]
+        [Route("accounts/kick/{accountName}")]
+        public async Task<IActionResult> KickAccountAsync(string accountName)
+        {
+            var kicked = false;
+            foreach (var server in this._gameServers.Values.OfType<GameServer>())
+            {
+                var players = await server.Context.GetPlayersAsync().ConfigureAwait(false);
+                foreach (var p in players)
+                {
+                    if (p.Account?.LoginName == accountName)
+                    {
+                        await p.DisconnectAsync().ConfigureAwait(false);
+                        kicked = true;
+                        break;
+                    }
+                }
+            }
+
+            if (kicked)
+            {
+                return this.Ok("Kicked");
+            }
+
+            return this.NotFound("Account not online");
+        }
+
+        /// <summary>
+        /// Kicks the specified player.
+        /// </summary>
+        /// <param name="playerName">Name of the player.</param>
+        [HttpPost]
+        [Route("players/kick/{playerName}")]
+        public async Task<IActionResult> KickPlayerAsync(string playerName)
+        {
+            var kicked = false;
+            foreach (var server in this._gameServers.Values.OfType<GameServer>())
+            {
+                var players = await server.Context.GetPlayersAsync().ConfigureAwait(false);
+                foreach (var p in players)
+                {
+                    if (p.Name == playerName)
+                    {
+                        await p.DisconnectAsync().ConfigureAwait(false);
+                        kicked = true;
+                        break;
+                    }
+                }
+            }
+
+            if (kicked)
+            {
+                return this.Ok("Kicked");
+            }
+
+            return this.NotFound("Player not online");
         }
 
         /// <summary>
