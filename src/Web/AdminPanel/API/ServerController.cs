@@ -131,6 +131,27 @@ namespace MUnique.OpenMU.Web.API
         }
 
         /// <summary>
+        /// Registers a dummy player online for testing.
+        /// </summary>
+        /// <param name="accountName">Name of the account.</param>
+        [HttpPost]
+        [Route("test/spawn-dummy/{accountName}")]
+        public async Task<IActionResult> SpawnDummyPlayerAsync(string accountName)
+        {
+            var server = this._gameServers.Values.OfType<GameServer>().FirstOrDefault();
+            if (server is null)
+            {
+                return this.Ok("No game server running");
+            }
+
+            var player = new Player(server.Context);
+            player.Account = new Account { LoginName = accountName };
+            await server.Context.AddPlayerAsync(player).ConfigureAwait(false);
+
+            return this.Ok($"Spawned dummy player for account: {accountName}");
+        }
+
+        /// <summary>
         /// Gets the server state.
         /// </summary>
         [HttpGet]
