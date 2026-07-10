@@ -86,6 +86,7 @@ public class Player : AsyncDisposable, IBucketMapObserver, IAttackable, IAttacke
     private const int NormalStepDelayMs = 300;
 
     private readonly object _speedHackLock = new();
+    private SpeedHackDetectConfiguration? _speedHackDetectConfig;
 
     private double _attackTokens = 5.0;
     private DateTime _lastAttackTokenUpdateTime = DateTime.MinValue;
@@ -134,7 +135,7 @@ public class Player : AsyncDisposable, IBucketMapObserver, IAttackable, IAttacke
     /// </summary>
     public async ValueTask RecordViolationAsync()
     {
-        var config = this.GameContext.FeaturePlugIns.GetPlugIn<SpeedHackDetectPlugIn>()?.Configuration;
+        var config = this.GetSpeedHackDetectConfig();
         if (config is null)
         {
             return;
@@ -204,7 +205,7 @@ public class Player : AsyncDisposable, IBucketMapObserver, IAttackable, IAttacke
         else if (shouldWarn)
         {
             // Show an in-game message
-            await this.ShowBlueMessageAsync("Warning: Unusual activity detected (speed check). Repeated violations will result in account restriction.").ConfigureAwait(false);
+            await this.ShowBlueMessageAsync(PlayerMessage.SpeedcheckWarningMessage).ConfigureAwait(false);
         }
         else
         {
@@ -212,9 +213,13 @@ public class Player : AsyncDisposable, IBucketMapObserver, IAttackable, IAttacke
         }
     }
 
+    /// <summary>
+    /// Checks if the player is using an attack speedhack.
+    /// </summary>
+    /// <returns>True, if a violation is detected; otherwise, false.</returns>
     public bool CheckAttackSpeedHack()
     {
-        var config = this.GameContext.FeaturePlugIns.GetPlugIn<SpeedHackDetectPlugIn>()?.Configuration;
+        var config = this.GetSpeedHackDetectConfig();
         if (config is null)
         {
             return false;
@@ -272,6 +277,11 @@ public class Player : AsyncDisposable, IBucketMapObserver, IAttackable, IAttacke
         this.PlayerState.StateChanges += async args => await (this.GameContext.PlugInManager.GetPlugInPoint<IPlayerStateChangingPlugIn>()?.PlayerStateChangingAsync(this, args) ?? ValueTask.CompletedTask).ConfigureAwait(false);
         this._observerToWorldViewAdapter = new ObserverToWorldViewAdapter(this, this.InfoRange);
         this._muHelperLazy = new Lazy<MuHelper.MuHelper>(() => new MuHelper.MuHelper(this));
+
+        this._speedHackDetectConfig = this.GameContext.FeaturePlugIns.GetPlugIn<SpeedHackDetectPlugIn>()?.Configuration;
+        this.GameContext.PlugInManager.PlugInActivated += this.OnPlugInActivatedOrDeactivated;
+        this.GameContext.PlugInManager.PlugInDeactivated += this.OnPlugInActivatedOrDeactivated;
+
         this.Culture = CultureInfo.CurrentCulture;
     }
 
@@ -1516,8 +1526,13 @@ public class Player : AsyncDisposable, IBucketMapObserver, IAttackable, IAttacke
         bool isSafezone = this.IsAtSafezone();
         bool shouldRecordViolation = false;
 
-        var config = this.GameContext.FeaturePlugIns.GetPlugIn<SpeedHackDetectPlugIn>()?.Configuration;
-        int maxAllowedWalkStartOffset = config?.MaxAllowedWalkStartOffset ?? 5;
+        var config = this.GetSpeedHackDetectConfig();
+
+        // We use the configured walk start offset if the speedhack plugin is active.
+        // Otherwise, we fallback to the original default value of 3.
+        // This basic position synchronization (rubberbanding) must always run to keep client and server in sync,
+        // even if the security anti-cheat checks are deactivated.
+        int maxAllowedWalkStartOffset = config?.MaxAllowedWalkStartOffset ?? 3;
 
         if (config is { })
         {
@@ -2180,6 +2195,9 @@ public class Player : AsyncDisposable, IBucketMapObserver, IAttackable, IAttacke
         await this.MagicEffectList.DisposeAsync().ConfigureAwait(false);
         this._respawnAfterDeathCts?.Dispose();
         (this._viewPlugIns as IDisposable)?.Dispose();
+
+        this.GameContext.PlugInManager.PlugInActivated -= this.OnPlugInActivatedOrDeactivated;
+        this.GameContext.PlugInManager.PlugInDeactivated -= this.OnPlugInActivatedOrDeactivated;
 
         this.PlayerDisconnected = null;
         this.PlayerEnteredWorld = null;
@@ -3176,6 +3194,22 @@ public class Player : AsyncDisposable, IBucketMapObserver, IAttackable, IAttacke
             var cancelAction = new TradeCancelAction();
             await cancelAction.CancelTradeAsync(this).ConfigureAwait(false);
         }
+    }
+
+    private void OnPlugInActivatedOrDeactivated(object? sender, PlugInEventArgs e)
+    {
+        if (e.PlugInType == typeof(SpeedHackDetectPlugIn))
+        {
+            lock (this._speedHackLock)
+            {
+                this._speedHackDetectConfig = this.GameContext.FeaturePlugIns.GetPlugIn<SpeedHackDetectPlugIn>()?.Configuration;
+            }
+        }
+    }
+
+    private SpeedHackDetectConfiguration? GetSpeedHackDetectConfig()
+    {
+        return this._speedHackDetectConfig ??= this.GameContext.FeaturePlugIns.GetPlugIn<SpeedHackDetectPlugIn>()?.Configuration;
     }
 
     /// <summary>

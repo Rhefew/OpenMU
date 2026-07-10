@@ -687,4 +687,7 @@
   <data name="InvasionMonsterDefeated" xml:space="preserve">
     <value>{0} has defeated the {1} {2}!</value>
   </data>
+  <data name="SpeedcheckWarningMessage" xml:space="preserve">
+    <value>Warning: Unusual activity detected (speed check). Repeated violations will result in account restriction.</value>
+  </data>
 </root>
